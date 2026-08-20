@@ -9,6 +9,7 @@ KIE_API_KEY = "30afd64c195a54760f0a706e48790c55"
 # Белый список: проверяющий (328761045) + ваш ID (7718617445)
 ALLOWED_USERS = [328761045, 7718617445]
 
+# Баннер курса
 BANNER_URL = "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=1000&auto=format&fit=crop&q=80"
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -16,28 +17,31 @@ bot = telebot.TeleBot(BOT_TOKEN)
 user_context = {}
 
 SYSTEM_PROMPT = (
-    "Ты — личный AI-помощник Анастасии Александровны, преподавателя английского языка для детей. "
-    "Твоя задача — отвечать на вопросы родителей о формате занятий, стоимости (индивидуально — 1500 руб/час, "
-    "мини-группы — 800 руб/час), методике и подготовке. Отвечай доброжелательно, кратко и вежливо, "
-    "ненавязчиво предлагая записаться на бесплатный пробный урок-диагностику."
+    "Ты — личный AI-консультант школы английского языка Елены Смирновой. "
+    "Твоя задача — профессионально и дружелюбно консультировать учеников и родителей "
+    "по поводу курсов разговорного английского. "
+    "Стоимость занятий: мини-группа — 900 руб/час, индивидуально — 1800 руб/час. "
+    "Курс длится 3 месяца, занятия проходят 2 раза в неделю на интерактивной платформе. "
+    "Отвечай кратко, ёмко, по делу и мягко предлагай записаться на бесплатный пробный урок."
 )
 
 def get_main_menu():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     keyboard.add(
-        types.InlineKeyboardButton("👩‍🏫 Обо мне кратко", callback_data="about"),
-        types.InlineKeyboardButton("🤖 Задать вопрос", callback_data="ask_ai"),
-        types.InlineKeyboardButton("💬 Отзывы", callback_data="reviews"),
+        types.InlineKeyboardButton("👩‍🏫 О преподавателе", callback_data="about"),
+        types.InlineKeyboardButton("🤖 Задать вопрос ИИ", callback_data="ask_ai"),
+        types.InlineKeyboardButton("💬 Отзывы учеников", callback_data="reviews"),
         types.InlineKeyboardButton("📅 Свободные окошки", callback_data="slots"),
-        types.InlineKeyboardButton("✨ Записаться на урок", callback_data="book")
+        types.InlineKeyboardButton("✨ Записаться на пробный урок", callback_data="book")
     )
     return keyboard
 
 def get_slots_keyboard():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     keyboard.add(
-        types.InlineKeyboardButton("Чт, 20 августа • 15:00", callback_data="slot_Чт, 20 августа • 15:00"),
-        types.InlineKeyboardButton("Пт, 21 августа • 16:00", callback_data="slot_Пт, 21 августа • 16:00"),
+        types.InlineKeyboardButton("Пн, 24 августа • 17:00", callback_data="slot_Пн, 24 августа • 17:00"),
+        types.InlineKeyboardButton("Ср, 26 августа • 18:30", callback_data="slot_Ср, 26 августа • 18:30"),
+        types.InlineKeyboardButton("Сб, 29 августа • 11:00", callback_data="slot_Сб, 29 августа • 11:00"),
         types.InlineKeyboardButton("❌ Отмена", callback_data="cancel_booking")
     )
     return keyboard
@@ -53,96 +57,80 @@ def start_cmd(message):
     user_context[user_id] = []
 
     caption = (
-        "Привет! 🌷\n\n"
-        "Рада видеть вас здесь.\n\n"
-        "Я — помощник Анастасии Александровны, преподавателя английского языка для детей.\n\n"
-        "Здесь можно спокойно познакомиться с Анастасией Александровной, "
-        "почитать отзывы родителей, посмотреть свободные окошки и выбрать удобное время для занятия.\n\n"
-        "Анастасия Александровна помогает детям учить английский без страха ошибок, "
-        "с интересом и в комфортной атмосфере.\n\n"
-        "Она работает с дошкольниками 6–7 лет и школьниками 1–11 классов, "
-        "индивидуально, в мини-группах и онлайн.\n\n"
-        "Выберите, что хотите посмотреть 👇"
+        "Здравствуйте! 🇬🇧\n\n"
+        "Добро пожаловать в онлайн-пространство разговорного английского Елены Смирновой!\n\n"
+        "Здесь вы можете узнать подробнее о методике быстрого преодоления языкового барьера, "
+        "посмотреть расписание свободных мест и задать любой вопрос нашему AI-ассистенту.\n\n"
+        "Выберите интересующий раздел меню ниже 👇"
     )
     try:
         bot.send_photo(message.chat.id, BANNER_URL, caption=caption, reply_markup=get_main_menu())
     except Exception:
         bot.send_message(message.chat.id, caption, reply_markup=get_main_menu())
 
-def process_child_name_step(message, chosen_slot):
+# Функция, которая срабатывает сразу после ввода имени
+def save_child_name_step(message, chosen_slot):
     if message.text and message.text.startswith('/'):
         start_cmd(message)
         return
 
-    child_name = message.text
+    student_name = message.text
     confirm_text = (
-        f"✨ **Вы успешно записаны!** 🌷\n\n"
-        f"👤 **Имя:** {child_name}\n"
-        f"📅 **Окошко:** {chosen_slot}\n\n"
-        f"Анастасия Александровна свяжется с вами перед началом занятия: @annie_anastasia"
+        f"✅ **Запись успешно оформлена!** 🎉\n\n"
+        f"👤 **Ученик:** {student_name}\n"
+        f"📅 **Время урока:** {chosen_slot}\n\n"
+        f"Преподаватель свяжется с вами для отправки ссылки на урок: @elena_english_pro"
     )
     bot.send_message(message.chat.id, confirm_text, parse_mode="Markdown", reply_markup=get_main_menu())
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
-    user_id = call.from_user.id
+    chat_id = call.message.chat.id
 
     if call.data == "about":
         text = (
-            "👩‍🏫 **Обо мне кратко**\n\n"
-            "Меня зовут Анастасия Александровна. Я преподаватель английского языка "
-            "с высшим филологическим образованием и большим опытом работы с детьми.\n\n"
-            "В своей работе я сочетаю системный подход, понятное объяснение материала "
-            "и комфортную атмосферу для ребёнка.\n\n"
-            "✅ Высшее филологическое образование\n"
-            "✅ Опыт работы устным переводчиком\n"
-            "✅ Более 16 лет преподавания детям\n"
-            "✅ Регулярное участие в профессиональных конференциях по лингвистике и обучению детей\n\n"
-            "Мои ученики не просто улучшают оценки — они начинают лучше понимать английский, "
-            "увереннее говорить, перестают бояться ошибок и постепенно чувствуют себя свободнее в языке 🌷"
+            "👩‍🏫 **О преподавателе: Елена Викторовна Смирнова**\n\n"
+            "Сертифицированный преподаватель (CELTA / Cambridge), опыт работы более 12 лет.\n\n"
+            "🔹 Авторская методика погружения без зубрёжки\n"
+            "🔹 Развитие беглой речи с первого урока\n"
+            "🔹 Интерактивные материалы и разговорные клубы\n"
+            "🔹 95% студентов начинают уверенно говорить уже через 2 месяца"
         )
-        bot.send_message(call.message.chat.id, text, parse_mode="Markdown", reply_markup=get_main_menu())
+        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_main_menu())
 
     elif call.data == "ask_ai":
         text = (
-            "Здравствуйте! 🌷\n\n"
-            "Я личный AI-помощник Анастасии Александровны.\n"
-            "Я могу ответить на вопросы о занятиях, стоимости, формате обучения, "
-            "расписании и подходе к занятиям.\n\n"
-            "Напишите Ваш вопрос, и я постараюсь помочь."
+            "🤖 **Режим консультации с ИИ**\n\n"
+            "Задайте любой вопрос о курсе, методике, ценах или графике прямо в поле сообщения ниже:"
         )
-        bot.send_message(call.message.chat.id, text)
+        bot.send_message(chat_id, text, parse_mode="Markdown")
 
     elif call.data == "reviews":
         text = (
-            "💬 **Отзывы родителей:**\n\n"
-            "🌸 **Алина, Мама Влады:**\n"
-            "«Добрый день. Полностью поддерживаю! И добавлю, что для меня было важно привить "
-            "любовь к изучению английского, чтобы не казалось слишком сложным. Влада получала 4-ки, "
-            "а тут четверть на 5 завершила и знания есть хорошие.»\n\n"
-            "🌸 **Сильвия:**\n"
-            "«Занятия были очень полезными, интересными. Ребёнок всегда вовлечён в процесс. "
-            "Безусловно есть отличные результаты!»"
+            "💬 **Отзывы наших учеников:**\n\n"
+            "⭐ **Виктория К.:**\n"
+            "«Спустя месяц занятий перестала паниковать при разговоре с иностранными коллегами. Уроки очень живые!»\n\n"
+            "⭐ **Артем М. (папа Дениса, 12 лет):**\n"
+            "«Сын подтянул оценку с тройки до твёрдой пятёрки и с удовольствием смотрит мультфильмы в оригинале.»"
         )
-        bot.send_message(call.message.chat.id, text, parse_mode="Markdown", reply_markup=get_main_menu())
+        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_main_menu())
 
     elif call.data in ["slots", "book"]:
-        text = "📅 **Выберите удобное окошко:**"
-        bot.send_message(call.message.chat.id, text, parse_mode="Markdown", reply_markup=get_slots_keyboard())
+        text = "📅 **Выберите удобное окошко для пробного урока:**"
+        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_slots_keyboard())
 
     elif call.data.startswith("slot_"):
         slot_name = call.data.replace("slot_", "")
         text = (
-            f"✨ **Вы выбрали:**\n"
-            f"📅 {slot_name}\n\n"
-            f"Как зовут ребёнка?"
+            f"✨ **Выбранное время:**\n📅 {slot_name}\n\n"
+            f"Напишите имя ученика (и контакт для связи):"
         )
-        msg = bot.send_message(call.message.chat.id, text, parse_mode="Markdown", reply_markup=get_cancel_keyboard())
-        bot.register_next_step_handler(msg, process_child_name_step, slot_name)
+        msg = bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_cancel_keyboard())
+        bot.register_next_step_handler(msg, save_child_name_step, slot_name)
 
     elif call.data == "cancel_booking":
-        bot.clear_step_handler_by_chat_id(chat_id=call.message.chat.id)
-        bot.send_message(call.message.chat.id, "Запись отменена 🌷", reply_markup=get_main_menu())
+        bot.clear_step_handler_by_chat_id(chat_id=chat_id)
+        bot.send_message(chat_id, "Запись отменена. Главное меню:", reply_markup=get_main_menu())
 
     bot.answer_callback_query(call.id)
 
@@ -177,33 +165,34 @@ def message_handler(message):
         "temperature": 0.7
     }
 
-    urls_to_try = [
+    # Точные маршруты шлюза Kie.ai
+    endpoints = [
+        "https://api.kie.ai/openai/v1/chat/completions",
         "https://api.kie.ai/api/v1/chat/completions",
-        "https://api.kie.ai/v1/chat/completions",
-        "https://api.kie.ai/chat/completions"
+        "https://api.kie.ai/v1/chat/completions"
     ]
 
-    bot_reply = None
-    last_error = ""
+    reply_content = None
+    err_log = ""
 
-    for url in urls_to_try:
+    for url in endpoints:
         try:
-            res = requests.post(url, headers=headers, json=payload, timeout=20)
-            if res.status_code == 200:
-                data = res.json()
+            r = requests.post(url, headers=headers, json=payload, timeout=20)
+            if r.status_code == 200:
+                data = r.json()
                 if "choices" in data and len(data["choices"]) > 0:
-                    bot_reply = data["choices"][0]["message"]["content"]
+                    reply_content = data["choices"][0]["message"]["content"]
                     break
             else:
-                last_error = f"HTTP {res.status_code}: {res.text}"
+                err_log = f"HTTP {r.status_code}: {r.text}"
         except Exception as e:
-            last_error = str(e)
+            err_log = str(e)
 
-    if bot_reply:
-        user_context[user_id].append({"role": "assistant", "content": bot_reply})
-        bot.reply_to(message, bot_reply, reply_markup=get_main_menu())
+    if reply_content:
+        user_context[user_id].append({"role": "assistant", "content": reply_content})
+        bot.reply_to(message, reply_content, reply_markup=get_main_menu())
     else:
-        bot.reply_to(message, f"Ошибка ответа ИИ: {last_error}")
+        bot.reply_to(message, f"Ошибка ответа ИИ: {err_log}")
 
 if __name__ == "__main__":
     bot.infinity_polling()
