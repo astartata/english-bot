@@ -6,25 +6,22 @@ import requests
 BOT_TOKEN = "8719479123:AAGUe43dzC-B7F17_yl6_HBJ2KjAgDebqIY"
 KIE_API_KEY = "30afd64c195a54760f0a706e48790c55"
 
-# Проверяющий + ваш ID:
-ALLOWED_USERS = [328761045, 7718617445]  # Добавьте свой ID через запятую
+# Белый список: проверяющий (328761045) + ваш ID (7718617445)
+ALLOWED_USERS = [328761045, 7718617445]
 
 BANNER_URL = "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=1000&auto=format&fit=crop&q=80"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
 user_context = {}
-user_state = {}
-user_selected_slot = {}
 
 SYSTEM_PROMPT = (
-    "Ты — личный AI-помощник Анастасии Александровны, преподавателя разговорного английского языка. "
-    "Твоя задача — отвечать на вопросы родителей и учеников о формате занятий, стоимости, "
-    "методике и подготовке. Отвечай доброжелательно, кратко, структурированно и вежливо, "
-    "подводя к записи на бесплатный пробный урок-диагностику."
+    "Ты — личный AI-помощник Анастасии Александровны, преподавателя английского языка для детей. "
+    "Твоя задача — отвечать на вопросы родителей о формате занятий, стоимости (индивидуально — 1500 руб/час, "
+    "мини-группы — 800 руб/час), методике и подготовке. Отвечай доброжелательно, кратко и вежливо, "
+    "ненавязчиво предлагая записаться на бесплатный пробный урок-диагностику."
 )
 
-# Главное меню
 def get_main_menu():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     keyboard.add(
@@ -36,7 +33,6 @@ def get_main_menu():
     )
     return keyboard
 
-# Кнопки со слотами времени
 def get_slots_keyboard():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     keyboard.add(
@@ -46,7 +42,6 @@ def get_slots_keyboard():
     )
     return keyboard
 
-# Кнопка отмены при вводе имени
 def get_cancel_keyboard():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     keyboard.add(types.InlineKeyboardButton("❌ Отмена", callback_data="cancel_booking"))
@@ -56,7 +51,6 @@ def get_cancel_keyboard():
 def start_cmd(message):
     user_id = message.from_user.id
     user_context[user_id] = []
-    user_state[user_id] = "menu"
 
     caption = (
         "Привет! 🌷\n\n"
@@ -70,11 +64,24 @@ def start_cmd(message):
         "индивидуально, в мини-группах и онлайн.\n\n"
         "Выберите, что хотите посмотреть 👇"
     )
-    
     try:
         bot.send_photo(message.chat.id, BANNER_URL, caption=caption, reply_markup=get_main_menu())
     except Exception:
         bot.send_message(message.chat.id, caption, reply_markup=get_main_menu())
+
+def process_child_name_step(message, chosen_slot):
+    if message.text and message.text.startswith('/'):
+        start_cmd(message)
+        return
+
+    child_name = message.text
+    confirm_text = (
+        f"✨ **Вы успешно записаны!** 🌷\n\n"
+        f"👤 **Имя:** {child_name}\n"
+        f"📅 **Окошко:** {chosen_slot}\n\n"
+        f"Анастасия Александровна свяжется с вами перед началом занятия: @annie_anastasia"
+    )
+    bot.send_message(message.chat.id, confirm_text, parse_mode="Markdown", reply_markup=get_main_menu())
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
@@ -97,7 +104,6 @@ def callback_handler(call):
         bot.send_message(call.message.chat.id, text, parse_mode="Markdown", reply_markup=get_main_menu())
 
     elif call.data == "ask_ai":
-        user_state[user_id] = "ai_dialog"
         text = (
             "Здравствуйте! 🌷\n\n"
             "Я личный AI-помощник Анастасии Александровны.\n"
@@ -126,19 +132,16 @@ def callback_handler(call):
 
     elif call.data.startswith("slot_"):
         slot_name = call.data.replace("slot_", "")
-        user_selected_slot[user_id] = slot_name
-        user_state[user_id] = "waiting_for_name"
-        
         text = (
             f"✨ **Вы выбрали:**\n"
             f"📅 {slot_name}\n\n"
             f"Как зовут ребёнка?"
         )
-        bot.send_message(call.message.chat.id, text, parse_mode="Markdown", reply_markup=get_cancel_keyboard())
+        msg = bot.send_message(call.message.chat.id, text, parse_mode="Markdown", reply_markup=get_cancel_keyboard())
+        bot.register_next_step_handler(msg, process_child_name_step, slot_name)
 
     elif call.data == "cancel_booking":
-        user_state[user_id] = "menu"
-        user_selected_slot[user_id] = None
+        bot.clear_step_handler_by_chat_id(chat_id=call.message.chat.id)
         bot.send_message(call.message.chat.id, "Запись отменена 🌷", reply_markup=get_main_menu())
 
     bot.answer_callback_query(call.id)
@@ -148,20 +151,6 @@ def message_handler(message):
     user_id = message.from_user.id
     user_text = message.text
 
-    # Если пользователь вводил имя для записи
-    if user_state.get(user_id) == "waiting_for_name":
-        slot = user_selected_slot.get(user_id, "выбранное время")
-        user_state[user_id] = "menu"
-        confirm_text = (
-            f"✨ **Запись предварительно оформлена!**\n\n"
-            f"👤 **Ученик:** {user_text}\n"
-            f"📅 **Время:** {slot}\n\n"
-            f"Анастасия Александровна свяжется с вами для подтверждения: @annie_anastasia 🌷"
-        )
-        bot.send_message(message.chat.id, confirm_text, parse_mode="Markdown", reply_markup=get_main_menu())
-        return
-
-    # Проверка белого списка для запросов к ИИ
     if user_id not in ALLOWED_USERS:
         bot.reply_to(message, "⚠️ Доступ к ИИ открыт только для тестирования преподавателем (ID: 328761045).")
         return
@@ -177,35 +166,44 @@ def message_handler(message):
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + user_context[user_id]
 
-    # Прямой запрос к Kie.ai через requests
-    try:
-        headers = {
-            "Authorization": f"Bearer {KIE_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "messages": messages,
-            "stream": False
-        }
-        
-        # Запрос к API
-        res = requests.post("https://api.kie.ai/chat/completions", headers=headers, json=payload, timeout=25)
-        
-        if res.status_code == 404:
-            # Запасной маршрут если на сервере другой префикс
-            res = requests.post("https://api.kie.ai/v1/chat/completions", headers=headers, json=payload, timeout=25)
+    headers = {
+        "Authorization": f"Bearer {KIE_API_KEY.strip()}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": messages,
+        "temperature": 0.7
+    }
 
-        data = res.json()
-        
-        if "choices" in data and len(data["choices"]) > 0:
-            reply_text = data["choices"][0]["message"]["content"]
-            user_context[user_id].append({"role": "assistant", "content": reply_text})
-            bot.reply_to(message, reply_text, reply_markup=get_main_menu())
-        else:
-            bot.reply_to(message, f"Ответ от ИИ: {data.get('message', str(data))}")
-            
-    except Exception as e:
-        bot.reply_to(message, f"Ошибка ИИ: {e}")
+    urls_to_try = [
+        "https://api.kie.ai/api/v1/chat/completions",
+        "https://api.kie.ai/v1/chat/completions",
+        "https://api.kie.ai/chat/completions"
+    ]
+
+    bot_reply = None
+    last_error = ""
+
+    for url in urls_to_try:
+        try:
+            res = requests.post(url, headers=headers, json=payload, timeout=20)
+            if res.status_code == 200:
+                data = res.json()
+                if "choices" in data and len(data["choices"]) > 0:
+                    bot_reply = data["choices"][0]["message"]["content"]
+                    break
+            else:
+                last_error = f"HTTP {res.status_code}: {res.text}"
+        except Exception as e:
+            last_error = str(e)
+
+    if bot_reply:
+        user_context[user_id].append({"role": "assistant", "content": bot_reply})
+        bot.reply_to(message, bot_reply, reply_markup=get_main_menu())
+    else:
+        bot.reply_to(message, f"Ошибка ответа ИИ: {last_error}")
 
 if __name__ == "__main__":
     bot.infinity_polling()
