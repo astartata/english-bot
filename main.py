@@ -6,7 +6,7 @@ BOT_TOKEN = "8719479123:AAGUe43dzC-B7F17_yl6_HBJ2KjAgDebqIY"
 KIE_API_KEY = "30afd64c195a54760f0a706e48790c55"
 
 # Список тех, кому бот отвечает (проверяющий и вы):
-ALLOWED_USERS = [328761045, ВАШ_TG_ID]
+ALLOWED_USERS = [328761045, 7718617445]
 
 bot = telebot.TeleBot(BOT_TOKEN)
 ai_client = OpenAI(
