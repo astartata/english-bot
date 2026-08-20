@@ -3,26 +3,34 @@ from telebot import types
 import requests
 
 # ================= НАСТРОЙКИ =================
-BOT_TOKEN = "8719479123:AAGUe43dzC-B7F17_yl6_HBJ2KjAgDebqIY"
-KIE_API_KEY = "30afd64c195a54760f0a706e48790c55"
+BOT_TOKEN = "ВАШ_ТОКЕН_ОТ_BOTFATHER"
+KIE_API_KEY = "ВАШ_КЛЮЧ_ОТ_KIE_AI"
+
+# ВАШ РЕАЛЬНЫЙ ЮЗЕРНЕЙМ В ТЕЛЕГРАМ (без @ или с @):
+ADMIN_USERNAME = "@astartata"  # Укажите ваш действующий контакт в Telegram
 
 # Белый список: проверяющий (328761045) + ваш ID (7718617445)
 ALLOWED_USERS = [328761045, 7718617445]
 
-# Баннер курса
 BANNER_URL = "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=1000&auto=format&fit=crop&q=80"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# Список доступных слотов (занятые будут удаляться динамически)
+available_slots = [
+    "Пн, 24 августа • 17:00",
+    "Ср, 26 августа • 18:30",
+    "Сб, 29 августа • 11:00"
+]
+
 user_context = {}
 
 SYSTEM_PROMPT = (
-    "Ты — личный AI-консультант школы английского языка Елены Смирновой. "
-    "Твоя задача — профессионально и дружелюбно консультировать учеников и родителей "
-    "по поводу курсов разговорного английского. "
-    "Стоимость занятий: мини-группа — 900 руб/час, индивидуально — 1800 руб/час. "
-    "Курс длится 3 месяца, занятия проходят 2 раза в неделю на интерактивной платформе. "
-    "Отвечай кратко, ёмко, по делу и мягко предлагай записаться на бесплатный пробный урок."
+    "Ты — личный AI-консультант преподавателя курсов разговорного английского языка. "
+    "Твоя задача — вежливо, профессионально и понятно консультировать учеников и родителей. "
+    "Стоимость обучения: мини-группа (до 4 человек) — 900 руб/занятие, индивидуально — 1800 руб/занятие. "
+    "Курс рассчитан на 3 месяца (2 раза в неделю), упор на преодоление языкового барьера и разговорную речь. "
+    "Отвечай кратко и доброжелательно, предлагай записаться на бесплатное пробное занятие-диагностику."
 )
 
 def get_main_menu():
@@ -38,12 +46,12 @@ def get_main_menu():
 
 def get_slots_keyboard():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
-    keyboard.add(
-        types.InlineKeyboardButton("Пн, 24 августа • 17:00", callback_data="slot_Пн, 24 августа • 17:00"),
-        types.InlineKeyboardButton("Ср, 26 августа • 18:30", callback_data="slot_Ср, 26 августа • 18:30"),
-        types.InlineKeyboardButton("Сб, 29 августа • 11:00", callback_data="slot_Сб, 29 августа • 11:00"),
-        types.InlineKeyboardButton("❌ Отмена", callback_data="cancel_booking")
-    )
+    if not available_slots:
+        keyboard.add(types.InlineKeyboardButton("⚠️ Свободных мест нет", callback_data="none"))
+    else:
+        for idx, slot in enumerate(available_slots):
+            keyboard.add(types.InlineKeyboardButton(slot, callback_data=f"slot_{idx}"))
+    keyboard.add(types.InlineKeyboardButton("❌ Отмена", callback_data="cancel_booking"))
     return keyboard
 
 def get_cancel_keyboard():
@@ -58,28 +66,32 @@ def start_cmd(message):
 
     caption = (
         "Здравствуйте! 🇬🇧\n\n"
-        "Добро пожаловать в онлайн-пространство разговорного английского Елены Смирновой!\n\n"
-        "Здесь вы можете узнать подробнее о методике быстрого преодоления языкового барьера, "
-        "посмотреть расписание свободных мест и задать любой вопрос нашему AI-ассистенту.\n\n"
-        "Выберите интересующий раздел меню ниже 👇"
+        "Добро пожаловать в онлайн-пространство разговорного английского!\n\n"
+        "Здесь вы можете узнать подробнее о программе обучения, "
+        "посмотреть график свободных мест и задать любой интересующий вопрос AI-ассистенту.\n\n"
+        "Выберите раздел в меню ниже 👇"
     )
     try:
         bot.send_photo(message.chat.id, BANNER_URL, caption=caption, reply_markup=get_main_menu())
     except Exception:
         bot.send_message(message.chat.id, caption, reply_markup=get_main_menu())
 
-# Функция, которая срабатывает сразу после ввода имени
-def save_child_name_step(message, chosen_slot):
+def save_student_step(message, chosen_slot):
     if message.text and message.text.startswith('/'):
         start_cmd(message)
         return
 
     student_name = message.text
+    
+    # Удаляем выбранный слот из списка доступных, чтобы его больше никто не мог выбрать
+    if chosen_slot in available_slots:
+        available_slots.remove(chosen_slot)
+
     confirm_text = (
-        f"✅ **Запись успешно оформлена!** 🎉\n\n"
+        f"✅ **Вы успешно записаны!** 🎉\n\n"
         f"👤 **Ученик:** {student_name}\n"
         f"📅 **Время урока:** {chosen_slot}\n\n"
-        f"Преподаватель свяжется с вами для отправки ссылки на урок: @elena_english_pro"
+        f"Преподаватель свяжется с вами для подтверждения: {ADMIN_USERNAME}"
     )
     bot.send_message(message.chat.id, confirm_text, parse_mode="Markdown", reply_markup=get_main_menu())
 
@@ -89,48 +101,49 @@ def callback_handler(call):
 
     if call.data == "about":
         text = (
-            "👩‍🏫 **О преподавателе: Елена Викторовна Смирнова**\n\n"
-            "Сертифицированный преподаватель (CELTA / Cambridge), опыт работы более 12 лет.\n\n"
-            "🔹 Авторская методика погружения без зубрёжки\n"
-            "🔹 Развитие беглой речи с первого урока\n"
-            "🔹 Интерактивные материалы и разговорные клубы\n"
-            "🔹 95% студентов начинают уверенно говорить уже через 2 месяца"
+            "👩‍🏫 **О преподавателе**\n\n"
+            "Сертифицированный преподаватель английского языка с опытом более 12 лет.\n\n"
+            "🔹 Практика живой речи с первого занятия\n"
+            "🔹 Индивидуальная программа под уровень и цели\n"
+            "🔹 Снятие языкового барьера и страха говорить\n"
+            "🔹 Удобный онлайн-формат на интерактивной доске"
         )
         bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_main_menu())
 
     elif call.data == "ask_ai":
         text = (
-            "🤖 **Режим консультации с ИИ**\n\n"
-            "Задайте любой вопрос о курсе, методике, ценах или графике прямо в поле сообщения ниже:"
+            "🤖 **Режим консультации с AI**\n\n"
+            "Задайте вопрос о курсе, ценах, методике или графике занятий прямо в чат:"
         )
         bot.send_message(chat_id, text, parse_mode="Markdown")
 
     elif call.data == "reviews":
         text = (
-            "💬 **Отзывы наших учеников:**\n\n"
-            "⭐ **Виктория К.:**\n"
-            "«Спустя месяц занятий перестала паниковать при разговоре с иностранными коллегами. Уроки очень живые!»\n\n"
-            "⭐ **Артем М. (папа Дениса, 12 лет):**\n"
-            "«Сын подтянул оценку с тройки до твёрдой пятёрки и с удовольствием смотрит мультфильмы в оригинале.»"
+            "💬 **Отзывы учеников:**\n\n"
+            "⭐ **Виктория:** «Спустя месяц перестала бояться созвонов на английском на работе!»\n\n"
+            "⭐ **Артем:** «Сын исправил школьную оценку на отлично и с интересом учит язык.»"
         )
         bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_main_menu())
 
     elif call.data in ["slots", "book"]:
-        text = "📅 **Выберите удобное окошко для пробного урока:**"
-        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_slots_keyboard())
+        if not available_slots:
+            bot.send_message(chat_id, "На данный момент все окошки заняты. Напишите нам напрямую: " + ADMIN_USERNAME, reply_markup=get_main_menu())
+        else:
+            bot.send_message(chat_id, "📅 **Выберите удобное свободное время:**", parse_mode="Markdown", reply_markup=get_slots_keyboard())
 
     elif call.data.startswith("slot_"):
-        slot_name = call.data.replace("slot_", "")
-        text = (
-            f"✨ **Выбранное время:**\n📅 {slot_name}\n\n"
-            f"Напишите имя ученика (и контакт для связи):"
-        )
-        msg = bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_cancel_keyboard())
-        bot.register_next_step_handler(msg, save_child_name_step, slot_name)
+        idx = int(call.data.replace("slot_", ""))
+        if idx < len(available_slots):
+            chosen_slot = available_slots[idx]
+            text = f"✨ **Вы выбрали:**\n📅 {chosen_slot}\n\nНапишите имя ученика и контактный номер:"
+            msg = bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_cancel_keyboard())
+            bot.register_next_step_handler(msg, save_student_step, chosen_slot)
+        else:
+            bot.send_message(chat_id, "Это окошко уже занято! Пожалуйста, выберите другое:", reply_markup=get_slots_keyboard())
 
     elif call.data == "cancel_booking":
         bot.clear_step_handler_by_chat_id(chat_id=chat_id)
-        bot.send_message(chat_id, "Запись отменена. Главное меню:", reply_markup=get_main_menu())
+        bot.send_message(chat_id, "Запись отменена.", reply_markup=get_main_menu())
 
     bot.answer_callback_query(call.id)
 
@@ -154,37 +167,32 @@ def message_handler(message):
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + user_context[user_id]
 
-    headers = {
-        "Authorization": f"Bearer {KIE_API_KEY.strip()}",
-        "Content-Type": "application/json"
-    }
-    
+    # Список возможных форматов запроса к Kie.ai
+    attempts = [
+        ("https://api.kie.ai/v1/chat/completions", {"Authorization": f"Bearer {KIE_API_KEY.strip()}", "Content-Type": "application/json"}),
+        ("https://api.kie.ai/chat/completions", {"Authorization": f"Bearer {KIE_API_KEY.strip()}", "api-key": KIE_API_KEY.strip(), "Content-Type": "application/json"}),
+        ("https://api.kie.ai/api/v1/chat/completions", {"Authorization": f"Bearer {KIE_API_KEY.strip()}", "Content-Type": "application/json"}),
+    ]
+
     payload = {
         "model": "gpt-4o-mini",
         "messages": messages,
         "temperature": 0.7
     }
 
-    # Точные маршруты шлюза Kie.ai
-    endpoints = [
-        "https://api.kie.ai/openai/v1/chat/completions",
-        "https://api.kie.ai/api/v1/chat/completions",
-        "https://api.kie.ai/v1/chat/completions"
-    ]
-
     reply_content = None
     err_log = ""
 
-    for url in endpoints:
+    for url, hdrs in attempts:
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=20)
+            r = requests.post(url, headers=hdrs, json=payload, timeout=20)
             if r.status_code == 200:
                 data = r.json()
                 if "choices" in data and len(data["choices"]) > 0:
                     reply_content = data["choices"][0]["message"]["content"]
                     break
             else:
-                err_log = f"HTTP {r.status_code}: {r.text}"
+                err_log = f"URL {url} -> HTTP {r.status_code}: {r.text}"
         except Exception as e:
             err_log = str(e)
 
@@ -192,7 +200,7 @@ def message_handler(message):
         user_context[user_id].append({"role": "assistant", "content": reply_content})
         bot.reply_to(message, reply_content, reply_markup=get_main_menu())
     else:
-        bot.reply_to(message, f"Ошибка ответа ИИ: {err_log}")
+        bot.reply_to(message, f"Ошибка ответа ИИ:\n{err_log}")
 
 if __name__ == "__main__":
     bot.infinity_polling()
