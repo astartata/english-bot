@@ -11,10 +11,9 @@ ALLOWED_USERS = [328761045, 7718617445]
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Исправленный адрес kie.ai
 ai_client = OpenAI(
     api_key=KIE_API_KEY,
-    base_url="https://api.kie.ai"
+    base_url="https://api.kie.ai/api/v1"
 )
 
 user_context = {}
