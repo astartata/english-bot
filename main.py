@@ -13,27 +13,40 @@ ALLOWED_USERS = [328761045, 7718617445]
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Список всех исходных слотов
+# Исходный список доступных окошек
 ALL_SLOTS = [
     "Пн, 24 августа • 17:00",
     "Ср, 26 августа • 18:30",
     "Сб, 29 августа • 11:00"
 ]
 
-# Множество реально забронированных слотов (где ввели имя)
-booked_slots = set()
+# Хранилище подтвержденных записей (слот занимает ТОЛЬКО после отправки имени)
+confirmed_bookings = set()
 
-# Временное хранение выбранного слота пользователем до ввода имени
-user_selected_slot = {}
-user_context = {}
+# Временный выбор до отправки имени
+pending_user_slot = {}
+user_dialog_history = {}
 
+# Глубокая и подробная база знаний для ИИ
 SYSTEM_PROMPT = (
-    "Ты — личный AI-консультант преподавателя курсов разговорного английского языка Елены Смирновой. "
-    "Твоя задача — отвечать на вопросы родителей и учеников о формате занятий, стоимости (индивидуально — 1800 руб/час, "
-    "мини-группы — 900 руб/час), методике и подготовке. Отвечай доброжелательно, кратко и простым текстом.\n\n"
-    "ВАЖНОЕ ПРАВИЛО: КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать разметку Markdown, звездочки (** или *), "
-    "решетки (#), нижние подчеркивания (_) и обратные кавычки. Пиши обычный чистый читаемый текст, "
-    "используй абзацы и эмодзи при необходимости. Предлагай записаться на бесплатный пробный урок."
+    "Ты — главный AI-консультант онлайн-школы разговорного английского языка Елены Смирновой.\n"
+    "Твоя задача — давать развернутые, экспертные, доброжелательные и подробные ответы родителям и потенциальным ученикам.\n\n"
+    "ПОДРОБНЫЕ ДАННЫЕ О ШКОЛЕ И КУРСЕ:\n"
+    "1. О преподавателе: Елена Смирнова, сертифицированный преподаватель с международными дипломами и опытом более 12 лет. Специализируется на преодолении психологического и языкового барьера.\n"
+    "2. Форматы обучения и стоимость:\n"
+    "   - Мини-группы (3-4 человека): 900 рублей за 60 минут. Идеально для живого общения, групповых диалогов и погружения в языковую среду.\n"
+    "   - Индивидуальные занятия: 1800 рублей за 60 минут. Персональный темп, фокус на личных целях (работа, переезд, экзамены, бизнес-английский).\n"
+    "3. Методика и формат уроков:\n"
+    "   - Курс рассчитан на 3 месяца (24 урока при графике 2 раза в неделю по 60 минут).\n"
+    "   - 80% времени каждого урока посвящено активной разговорной речи.\n"
+    "   - Занятия проходят онлайн на современной интерактивной платформе с видеосвязью. Все материалы, карточки, аудио и конспекты предоставляются бесплатно в личном кабинете.\n"
+    "   - Никакой скучной зубрежки правил: грамматика сразу отрабатывается в живых диалогах и жизненных ситуациях.\n"
+    "4. Пробный урок:\n"
+    "   - Проводится абсолютно БЕСПЛАТНО (30 минут). Включает точную диагностику текущего уровня, определение сильных сторон и составление персонального плана обучения.\n\n"
+    "СТРОГОЕ ТРЕБОВАНИЕ К ФОРМАТИРОВАНИЮ ОТВЕТОВ:\n"
+    "- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать разметку Markdown: никаких звездочек (** или *), нижних подчеркиваний (_), решеток (#) и обратных кавычек (`).\n"
+    "- Ответ должен быть подробным, понятным, с комфортными абзацами и красивыми эмодзи.\n"
+    "- В конце каждого ответа вежливо приглашай записаться на бесплатный пробный урок через кнопки меню."
 )
 
 def get_main_menu():
@@ -49,13 +62,14 @@ def get_main_menu():
 
 def get_slots_keyboard():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
-    free_slots = [s for s in ALL_SLOTS if s not in booked_slots]
+    # Показываем только слоты, которые НЕ подтверждены
+    available_slots = [slot for slot in ALL_SLOTS if slot not in confirmed_bookings]
     
-    if not free_slots:
-        keyboard.add(types.InlineKeyboardButton("🔄 Сбросить все записи", callback_data="reset_slots"))
+    if not available_slots:
+        keyboard.add(types.InlineKeyboardButton("🔄 Сбросить брони (вернуть все окошки)", callback_data="reset_slots"))
     else:
-        for slot in free_slots:
-            keyboard.add(types.InlineKeyboardButton(f"🗓 {slot}", callback_data=f"pick:{slot}"))
+        for slot in available_slots:
+            keyboard.add(types.InlineKeyboardButton(f"🗓 {slot}", callback_data=f"select_slot:{slot}"))
             
     keyboard.add(types.InlineKeyboardButton("❌ Отмена", callback_data="cancel_booking"))
     return keyboard
@@ -68,44 +82,44 @@ def get_cancel_keyboard():
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
     user_id = message.from_user.id
-    user_context[user_id] = []
-    user_selected_slot.pop(user_id, None)
+    user_dialog_history[user_id] = []
+    pending_user_slot.pop(user_id, None)
     bot.clear_step_handler_by_chat_id(chat_id=message.chat.id)
 
     welcome_text = (
         "Здравствуйте! 🌷\n\n"
         "Добро пожаловать в онлайн-пространство разговорного английского Елены Смирновой!\n\n"
-        "Здесь можно познакомиться с методикой, почитать отзывы, "
-        "посмотреть свободные окошки и задать вопрос нашему AI-консультанту.\n\n"
-        "Выберите нужный раздел в меню ниже 👇"
+        "Здесь вы можете узнать всё о методике обучения, ознакомиться с отзывами учеников, "
+        "выбрать удобное время для занятий и получить подробную консультацию нашего AI-помощника.\n\n"
+        "Выберите интересующий вас раздел в меню ниже 👇"
     )
     bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_menu())
 
 def save_name_step(message):
     user_id = message.from_user.id
 
-    # Если пользователь ввел команду вместо имени
+    # Если введена команда отмены/перезапуска
     if message.text and message.text.startswith('/'):
-        user_selected_slot.pop(user_id, None)
+        pending_user_slot.pop(user_id, None)
         start_cmd(message)
         return
 
-    chosen_slot = user_selected_slot.get(user_id)
-    if not chosen_slot:
-        bot.send_message(message.chat.id, "Сессия записи сброшена. Пожалуйста, выберите окошко заново:", reply_markup=get_slots_keyboard())
+    slot_to_book = pending_user_slot.get(user_id)
+    if not slot_to_book:
+        bot.send_message(message.chat.id, "Выбор времени был сброшен. Пожалуйста, выберите окошко из списка:", reply_markup=get_slots_keyboard())
         return
 
     student_name = message.text.strip()
     
-    # Только здесь слот закрепляется как занятый
-    booked_slots.add(chosen_slot)
-    user_selected_slot.pop(user_id, None)
+    # ФИКСАЦИЯ БРОНИРОВАНИЯ ТОЛЬКО ЗДЕСЬ
+    confirmed_bookings.add(slot_to_book)
+    pending_user_slot.pop(user_id, None)
 
     confirm_text = (
-        "✅ Вы успешно записаны! 🎉\n\n"
+        "✅ Вы успешно записаны на бесплатный пробный урок! 🎉\n\n"
         f"👤 Ученик: {student_name}\n"
-        f"📅 Время урока: {chosen_slot}\n\n"
-        f"Преподаватель свяжется с вами для подтверждения: {ADMIN_USERNAME}"
+        f"📅 Выбранное время: {slot_to_book}\n\n"
+        f"Преподаватель свяжется с вами в Telegram для подтверждения и отправки ссылки: {ADMIN_USERNAME}"
     )
     bot.send_message(message.chat.id, confirm_text, reply_markup=get_main_menu())
 
@@ -120,71 +134,78 @@ def callback_handler(call):
     user_id = call.from_user.id
 
     if call.data == "about":
-        user_selected_slot.pop(user_id, None)
+        pending_user_slot.pop(user_id, None)
         bot.clear_step_handler_by_chat_id(chat_id=chat_id)
         text = (
             "👩‍🏫 О преподавателе: Елена Смирнова\n\n"
-            "Сертифицированный преподаватель английского языка с опытом более 12 лет.\n\n"
-            "• Практика живой речи с первого занятия\n"
-            "• Индивидуальный подход и снятие страха говорить\n"
-            "• Удобный онлайн-формат на интерактивной доске\n"
-            "• Результат уже через 1 месяц занятий 🌷"
+            "Сертифицированный преподаватель английского языка с опытом преподавания более 12 лет.\n\n"
+            "• Авторская коммуникативная методика: 80% живой практики с первого занятия\n"
+            "• Индивидуальный подход и снятие страха говорить на иностранном языке\n"
+            "• Удобный онлайн-формат на интерактивной платформе со всеми материалами\n"
+            "• Заметный результат и свобода в речи уже через 1 месяц регулярных уроков 🌷"
         )
         bot.send_message(chat_id, text, reply_markup=get_main_menu())
 
     elif call.data == "ask_ai":
-        user_selected_slot.pop(user_id, None)
+        pending_user_slot.pop(user_id, None)
         bot.clear_step_handler_by_chat_id(chat_id=chat_id)
-        text = "🤖 Режим AI-консультации: напишите ваш вопрос прямо в чат (о ценах, графике, формате):"
+        text = "🤖 Режим подробной AI-консультации:\n\nЗадайте любой вопрос о курсе, ценах, расписании или методике прямо в поле сообщения ниже:"
         bot.send_message(chat_id, text)
 
     elif call.data == "reviews":
-        user_selected_slot.pop(user_id, None)
+        pending_user_slot.pop(user_id, None)
         bot.clear_step_handler_by_chat_id(chat_id=chat_id)
         text = (
-            "💬 Отзывы учеников:\n\n"
-            "🌸 Виктория: Перестала бояться созвонов на английском на работе, всё супер!\n\n"
-            "🌸 Максим: Сдал экзамен на отлично, уроки проходят легко и понятно!"
+            "💬 Отзывы наших учеников:\n\n"
+            "🌸 Виктория (IT-специалист):\n«Перестала бояться созвонов на английском с иностранными коллегами. За 2 месяца полностью ушел языковой барьер, уроки проходят на одном дыхании!»\n\n"
+            "🌸 Максим (студент):\n«Сдал международный экзамен на отлично! Очень понравилась подача грамматики — без зубрежки, всё сразу в диалогах. Спасибо Елене!»"
         )
         bot.send_message(chat_id, text, reply_markup=get_main_menu())
 
     elif call.data in ["slots", "book"]:
-        user_selected_slot.pop(user_id, None)
+        pending_user_slot.pop(user_id, None)
         bot.clear_step_handler_by_chat_id(chat_id=chat_id)
-        free = [s for s in ALL_SLOTS if s not in booked_slots]
-        if not free:
-            bot.send_message(chat_id, f"Свободных мест нет. Напишите: {ADMIN_USERNAME}", reply_markup=get_slots_keyboard())
+        available = [s for s in ALL_SLOTS if s not in confirmed_bookings]
+        if not available:
+            bot.send_message(
+                chat_id, 
+                f"Все окошки на ближайшие дни заняты.\nВы можете сбросить записи для проверки или написать напрямую преподавателю: {ADMIN_USERNAME}", 
+                reply_markup=get_slots_keyboard()
+            )
         else:
-            bot.send_message(chat_id, "📅 Выберите удобное свободное окошко:", reply_markup=get_slots_keyboard())
+            bot.send_message(chat_id, "📅 Выберите подходящее свободное окошко для пробного урока:", reply_markup=get_slots_keyboard())
 
-    elif call.data.startswith("pick:"):
-        chosen_slot = call.data.replace("pick:", "")
-        if chosen_slot in booked_slots:
-            bot.send_message(chat_id, "Это место уже занято! Выберите другое:", reply_markup=get_slots_keyboard())
+    elif call.data.startswith("select_slot:"):
+        chosen_slot = call.data.replace("select_slot:", "")
+        if chosen_slot in confirmed_bookings:
+            bot.send_message(chat_id, "Это место уже подтверждено другим учеником. Выберите другое:", reply_markup=get_slots_keyboard())
         else:
-            user_selected_slot[user_id] = chosen_slot
-            text = f"✨ Вы выбрали:\n📅 {chosen_slot}\n\nКак зовут ученика?"
+            pending_user_slot[user_id] = chosen_slot
+            text = f"✨ Вы выбрали время:\n📅 {chosen_slot}\n\nПожалуйста, напишите имя и фамилию ученика:"
             msg = bot.send_message(chat_id, text, reply_markup=get_cancel_keyboard())
             bot.register_next_step_handler(msg, save_name_step)
 
     elif call.data == "cancel_booking":
-        user_selected_slot.pop(user_id, None)
+        # Полная очистка ожидания имени — слот НЕ теряется
+        pending_user_slot.pop(user_id, None)
         bot.clear_step_handler_by_chat_id(chat_id=chat_id)
-        bot.send_message(chat_id, "Запись отменена. Все свободные окошки сохранены 🌷", reply_markup=get_main_menu())
+        bot.send_message(chat_id, "Запись отменена. Все свободные окошки сохранены и доступны в меню 🌷", reply_markup=get_main_menu())
 
     elif call.data == "reset_slots":
-        booked_slots.clear()
-        user_selected_slot.pop(user_id, None)
-        bot.send_message(chat_id, "✅ Все окошки снова доступны!", reply_markup=get_slots_keyboard())
+        confirmed_bookings.clear()
+        pending_user_slot.pop(user_id, None)
+        bot.send_message(chat_id, "✅ Все окошки успешно сброшены и снова открыты для записи!", reply_markup=get_slots_keyboard())
 
-def clean_markdown(text):
+# Функция очистки текста от любых символов разметки
+def remove_markdown(text):
     if not text:
         return ""
-    for char in ["**", "__", "```", "`", "#"]:
-        text = text.replace(char, "")
+    for symbol in ["**", "__", "```", "`", "#", "*"]:
+        text = text.replace(symbol, "")
     return text.strip()
 
-def call_ai_service(messages_list):
+# Запрос к нейросети через шлюз KIE AI
+def call_ai(messages_list):
     key = KIE_API_KEY.strip()
     headers = {
         "Authorization": f"Bearer {key}",
@@ -203,19 +224,26 @@ def call_ai_service(messages_list):
             "temperature": 0.7
         }
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=10)
+            r = requests.post(url, headers=headers, json=payload, timeout=12)
             if r.status_code == 200:
                 data = r.json()
                 if "choices" in data and len(data["choices"]) > 0:
-                    raw_text = data["choices"][0]["message"]["content"]
-                    return clean_markdown(raw_text)
+                    raw_answer = data["choices"][0]["message"]["content"]
+                    return remove_markdown(raw_answer)
         except Exception:
             continue
 
+    # Подробный ответ по базе знаний, если внешний сервер дает сбой
     return (
-        "Здравствуйте! Стоимость занятий в мини-группе составляет 900 руб/урок, "
-        "индивидуально — 1800 руб/урок. Курс длится 3 месяца. "
-        "Вы можете записаться на бесплатный пробный урок-диагностику через главное меню!"
+        "Здравствуйте! С удовольствием расскажу подробнее о курсе разговорного английского Елены Смирновой 🌷\n\n"
+        "1. Форматы и стоимость обучения:\n"
+        "• Мини-группы (до 4 человек): 900 рублей за занятие (60 минут). Отличная возможность практиковать речь в компании единомышленников.\n"
+        "• Индивидуальные уроки: 1800 рублей за занятие (60 минут). Программа полностью адаптируется под ваши персональные цели и график.\n\n"
+        "2. Методика и длительность:\n"
+        "Курс рассчитан на 3 месяца регулярных занятий (2 раза в неделю). 80% времени посвящено живому общению и снятию языкового барьера без зубрежки сложных правил.\n\n"
+        "3. Бесплатный пробный урок:\n"
+        "Мы проводим 30-минутную бесплатную диагностику, чтобы определить ваш уровень и составить персональный план обучения.\n\n"
+        "Вы можете выбрать удобное время в разделе меню «📅 Свободные окошки» или нажать «✨ Записаться на пробный урок»!"
     )
 
 @bot.message_handler(func=lambda message: True)
@@ -224,22 +252,22 @@ def message_handler(message):
     user_text = message.text
 
     if user_id not in ALLOWED_USERS:
-        bot.reply_to(message, "⚠️ Доступ открыт только для тестирования преподавателем (ID: 328761045).")
+        bot.reply_to(message, "⚠️ Доступ к ИИ открыт только для тестирования преподавателем (ID: 328761045).")
         return
 
     bot.send_chat_action(message.chat.id, 'typing')
 
-    if user_id not in user_context:
-        user_context[user_id] = []
+    if user_id not in user_dialog_history:
+        user_dialog_history[user_id] = []
 
-    user_context[user_id].append({"role": "user", "content": user_text})
-    if len(user_context[user_id]) > 10:
-        user_context[user_id] = user_context[user_id][-10:]
+    user_dialog_history[user_id].append({"role": "user", "content": user_text})
+    if len(user_dialog_history[user_id]) > 10:
+        user_dialog_history[user_id] = user_dialog_history[user_id][-10:]
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + user_context[user_id]
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + user_dialog_history[user_id]
 
-    ai_reply = call_ai_service(messages)
-    user_context[user_id].append({"role": "assistant", "content": ai_reply})
+    ai_reply = call_ai(messages)
+    user_dialog_history[user_id].append({"role": "assistant", "content": ai_reply})
     bot.reply_to(message, ai_reply, reply_markup=get_main_menu())
 
 if __name__ == "__main__":
