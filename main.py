@@ -3,8 +3,8 @@ from telebot import types
 import requests
 
 # ================= НАСТРОЙКИ =================
-BOT_TOKEN = "ВАШ_ТОКЕН_ОТ_BOTFATHER"
-KIE_API_KEY = "ВАШ_КЛЮЧ_ИЗ_KIE_AI"
+BOT_TOKEN = "8719479123:AAGUe43dzC-B7F17_yl6_HBJ2KjAgDebqIY"
+KIE_API_KEY = "46fe3db9b42642fc131a4311965bf8eb"
 
 ADMIN_USERNAME = "@astartata"
 
@@ -13,7 +13,7 @@ ALLOWED_USERS = [328761045, 7718617445]
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Список свободных окошек
+# Список всех окошек
 ALL_SLOTS = [
     "Пн, 24 августа • 17:00",
     "Ср, 26 августа • 18:30",
@@ -23,7 +23,6 @@ ALL_SLOTS = [
 booked_slots = set()
 user_context = {}
 
-# Инструкция для ИИ с явным запретом Markdown
 SYSTEM_PROMPT = (
     "Ты — личный AI-консультант преподавателя курсов разговорного английского языка Елены Смирновой. "
     "Твоя задача — отвечать на вопросы родителей и учеников о формате занятий, стоимости (индивидуально — 1800 руб/час, "
@@ -95,6 +94,12 @@ def save_name_step(message, chosen_slot):
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
+    # Мгновенно подтверждаем получение клика в Telegram
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+
     chat_id = call.message.chat.id
 
     if call.data == "about":
@@ -144,9 +149,6 @@ def callback_handler(call):
         booked_slots.clear()
         bot.send_message(chat_id, "✅ Все окошки снова доступны!", reply_markup=get_slots_keyboard())
 
-    bot.answer_callback_query(call.id)
-
-# Очистка текста от случайных символов Markdown
 def clean_markdown(text):
     if not text:
         return ""
@@ -173,7 +175,7 @@ def call_ai_service(messages_list):
             "temperature": 0.7
         }
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=12)
+            r = requests.post(url, headers=headers, json=payload, timeout=10)
             if r.status_code == 200:
                 data = r.json()
                 if "choices" in data and len(data["choices"]) > 0:
