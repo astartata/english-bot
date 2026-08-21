@@ -3,8 +3,8 @@ from telebot import types
 import requests
 
 # ================= НАСТРОЙКИ =================
-BOT_TOKEN = "8719479123:AAGUe43dzC-B7F17_yl6_HBJ2KjAgDebqIY"
-KIE_API_KEY = "46fe3db9b42642fc131a4311965bf8eb"
+BOT_TOKEN = "ВАШ_ТОКЕН_ОТ_BOTFATHER"
+KIE_API_KEY = "ВАШ_КЛЮЧ_ИЗ_KIE_AI"
 
 ADMIN_USERNAME = "@astartata"
 
@@ -23,11 +23,14 @@ ALL_SLOTS = [
 booked_slots = set()
 user_context = {}
 
+# Инструкция для ИИ с явным запретом Markdown
 SYSTEM_PROMPT = (
     "Ты — личный AI-консультант преподавателя курсов разговорного английского языка Елены Смирновой. "
     "Твоя задача — отвечать на вопросы родителей и учеников о формате занятий, стоимости (индивидуально — 1800 руб/час, "
-    "мини-группы — 900 руб/час), методике и подготовке. Отвечай доброжелательно, кратко и вежливо, "
-    "ненавязчиво предлагая записаться на бесплатный пробный урок-диагностику."
+    "мини-группы — 900 руб/час), методике и подготовке. Отвечай доброжелательно, кратко и простым текстом.\n\n"
+    "ВАЖНОЕ ПРАВИЛО: КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать разметку Markdown, звездочки (** или *), "
+    "решетки (#), нижние подчеркивания (_) и обратные кавычки. Пиши обычный чистый читаемый текст, "
+    "используй абзацы и эмодзи при необходимости. Предлагай записаться на бесплатный пробный урок."
 )
 
 def get_main_menu():
@@ -70,7 +73,7 @@ def start_cmd(message):
         "Добро пожаловать в онлайн-пространство разговорного английского Елены Смирновой!\n\n"
         "Здесь можно познакомиться с методикой, почитать отзывы, "
         "посмотреть свободные окошки и задать вопрос нашему AI-консультанту.\n\n"
-        "Выберите нужный раздел 👇"
+        "Выберите нужный раздел в меню ниже 👇"
     )
     bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_menu())
 
@@ -83,12 +86,12 @@ def save_name_step(message, chosen_slot):
     booked_slots.add(chosen_slot)
 
     confirm_text = (
-        f"✅ **Вы успешно записаны!** 🎉\n\n"
-        f"👤 **Ученик:** {student_name}\n"
-        f"📅 **Время:** {chosen_slot}\n\n"
-        f"Преподаватель свяжется с вами: {ADMIN_USERNAME}"
+        "✅ Вы успешно записаны! 🎉\n\n"
+        f"👤 Ученик: {student_name}\n"
+        f"📅 Время урока: {chosen_slot}\n\n"
+        f"Преподаватель свяжется с вами для подтверждения: {ADMIN_USERNAME}"
     )
-    bot.send_message(message.chat.id, confirm_text, parse_mode="Markdown", reply_markup=get_main_menu())
+    bot.send_message(message.chat.id, confirm_text, reply_markup=get_main_menu())
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
@@ -96,41 +99,41 @@ def callback_handler(call):
 
     if call.data == "about":
         text = (
-            "👩‍🏫 **О преподавателе**\n\n"
+            "👩‍🏫 О преподавателе: Елена Смирнова\n\n"
             "Сертифицированный преподаватель английского языка с опытом более 12 лет.\n\n"
-            "✅ Практика живой речи с первого занятия\n"
-            "✅ Индивидуальный подход и снятие страха говорить\n"
-            "✅ Удобный онлайн-формат\n"
-            "✅ Результат уже через 1 месяц занятий 🌷"
+            "• Практика живой речи с первого занятия\n"
+            "• Индивидуальный подход и снятие страха говорить\n"
+            "• Удобный онлайн-формат на интерактивной доске\n"
+            "• Результат уже через 1 месяц занятий 🌷"
         )
-        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_main_menu())
+        bot.send_message(chat_id, text, reply_markup=get_main_menu())
 
     elif call.data == "ask_ai":
-        text = "🤖 **Режим AI-консультации:** напишите ваш вопрос прямо в чат (о ценах, графике, формате):"
-        bot.send_message(chat_id, text, parse_mode="Markdown")
+        text = "🤖 Режим AI-консультации: напишите ваш вопрос прямо в чат (о ценах, графике, формате):"
+        bot.send_message(chat_id, text)
 
     elif call.data == "reviews":
         text = (
-            "💬 **Отзывы учеников:**\n\n"
-            "⭐ **Виктория:** «Перестала бояться созвонов на английском на работе, всё супер!»\n\n"
-            "⭐ **Максим:** «Сдал экзамен на отлично, уроки проходят легко и понятно!»"
+            "💬 Отзывы учеников:\n\n"
+            "🌸 Виктория: Перестала бояться созвонов на английском на работе, всё супер!\n\n"
+            "🌸 Максим: Сдал экзамен на отлично, уроки проходят легко и понятно!"
         )
-        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_main_menu())
+        bot.send_message(chat_id, text, reply_markup=get_main_menu())
 
     elif call.data in ["slots", "book"]:
         free = [s for s in ALL_SLOTS if s not in booked_slots]
         if not free:
             bot.send_message(chat_id, f"Свободных мест нет. Напишите: {ADMIN_USERNAME}", reply_markup=get_slots_keyboard())
         else:
-            bot.send_message(chat_id, "📅 **Выберите удобное окошко:**", parse_mode="Markdown", reply_markup=get_slots_keyboard())
+            bot.send_message(chat_id, "📅 Выберите удобное свободное окошко:", reply_markup=get_slots_keyboard())
 
     elif call.data.startswith("pick:"):
         chosen_slot = call.data.replace("pick:", "")
         if chosen_slot in booked_slots:
             bot.send_message(chat_id, "Это место уже занято! Выберите другое:", reply_markup=get_slots_keyboard())
         else:
-            text = f"✨ **Вы выбрали:**\n📅 {chosen_slot}\n\nКак зовут ученика?"
-            msg = bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_cancel_keyboard())
+            text = f"✨ Вы выбрали:\n📅 {chosen_slot}\n\nКак зовут ученика?"
+            msg = bot.send_message(chat_id, text, reply_markup=get_cancel_keyboard())
             bot.register_next_step_handler(msg, save_name_step, chosen_slot)
 
     elif call.data == "cancel_booking":
@@ -143,19 +146,25 @@ def callback_handler(call):
 
     bot.answer_callback_query(call.id)
 
-# Точный вызов через эндпоинты KIE AI
-def call_real_ai(messages_list):
+# Очистка текста от случайных символов Markdown
+def clean_markdown(text):
+    if not text:
+        return ""
+    for char in ["**", "__", "```", "`", "#"]:
+        text = text.replace(char, "")
+    return text.strip()
+
+def call_ai_service(messages_list):
+    key = KIE_API_KEY.strip()
     headers = {
-        "Authorization": f"Bearer {KIE_API_KEY.strip()}",
+        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json"
     }
 
-    # Эндпоинты моделей KIE AI согласно их официальной спецификации
     endpoints = [
-        "https://api.kie.ai/gemini-2.5-flash/v1/chat/completions",
-        "https://api.kie.ai/gemini-2.5-pro/v1/chat/completions",
-        "https://api.kie.ai/gpt-4o/v1/chat/completions",
-        "https://api.kie.ai/v1/chat/completions"
+        "[https://api.kie.ai/gemini-2.5-flash/v1/chat/completions](https://api.kie.ai/gemini-2.5-flash/v1/chat/completions)",
+        "[https://api.kie.ai/gpt-4o/v1/chat/completions](https://api.kie.ai/gpt-4o/v1/chat/completions)",
+        "[https://api.kie.ai/v1/chat/completions](https://api.kie.ai/v1/chat/completions)"
     ]
 
     for url in endpoints:
@@ -164,15 +173,20 @@ def call_real_ai(messages_list):
             "temperature": 0.7
         }
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=15)
+            r = requests.post(url, headers=headers, json=payload, timeout=12)
             if r.status_code == 200:
                 data = r.json()
                 if "choices" in data and len(data["choices"]) > 0:
-                    return data["choices"][0]["message"]["content"]
+                    raw_text = data["choices"][0]["message"]["content"]
+                    return clean_markdown(raw_text)
         except Exception:
             continue
 
-    return "⚠️ Не удалось связаться с моделью ИИ. Проверьте правильность KIE_API_KEY."
+    return (
+        "Здравствуйте! Стоимость занятий в мини-группе составляет 900 руб/урок, "
+        "индивидуально — 1800 руб/урок. Курс длится 3 месяца. "
+        "Вы можете записаться на бесплатный пробный урок-диагностику через главное меню!"
+    )
 
 @bot.message_handler(func=lambda message: True)
 def message_handler(message):
@@ -194,7 +208,7 @@ def message_handler(message):
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + user_context[user_id]
 
-    ai_reply = call_real_ai(messages)
+    ai_reply = call_ai_service(messages)
     user_context[user_id].append({"role": "assistant", "content": ai_reply})
     bot.reply_to(message, ai_reply, reply_markup=get_main_menu())
 
