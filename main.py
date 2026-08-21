@@ -4,32 +4,31 @@ import requests
 
 # ================= НАСТРОЙКИ =================
 BOT_TOKEN = "8719479123:AAGUe43dzC-B7F17_yl6_HBJ2KjAgDebqIY"
-KIE_API_KEY = "30afd64c195a54760f0a706e48790c55"
+KIE_API_KEY = "46fe3db9b42642fc131a4311965bf8eb"
 
 ADMIN_USERNAME = "@astartata"
 
-# Белый список пользователей (проверяющий + ваш ID)
+# Белый список: проверяющий (328761045) + ваш ID (7718617445)
 ALLOWED_USERS = [328761045, 7718617445]
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Список всех окошек
+# Список всех доступных окошек
 ALL_SLOTS = [
     "Пн, 24 августа • 17:00",
     "Ср, 26 августа • 18:30",
     "Сб, 29 августа • 11:00"
 ]
 
-# Список занятых слотов
 booked_slots = set()
-
 user_context = {}
 
 SYSTEM_PROMPT = (
-    "Ты — личный AI-консультант преподавателя курсов разговорного английского языка Елены Смирновой. "
-    "Твоя задача — отвечать на вопросы родителей и учеников о формате занятий, стоимости (индивидуально — 1800 руб/час, "
-    "мини-группы — 900 руб/час), методике и подготовке. Отвечай доброжелательно, кратко и вежливо, "
-    "ненавязчиво предлагая записаться на бесплатный пробный урок-диагностику."
+    "Ты — личный AI-консультант школы разговорного английского языка Елены Смирновой. "
+    "Твоя задача — вежливо, понятно и кратко консультировать учеников и родителей. "
+    "Стоимость обучения: мини-группа — 900 руб/урок, индивидуально — 1800 руб/урок. "
+    "Курс длится 3 месяца, занятия 2 раза в неделю. Упор на преодоление языкового барьера. "
+    "Отвечай кратко, по делу и мягко предлагай записаться на бесплатный пробный урок."
 )
 
 def get_main_menu():
@@ -145,35 +144,35 @@ def callback_handler(call):
 
     bot.answer_callback_query(call.id)
 
-# Прямое обращение к Kie.ai
-def ask_ai_service(messages_list):
+# Прямой вызов шлюза KIE AI
+def call_kie_ai(messages_list):
+    key = KIE_API_KEY.strip()
     headers = {
-        "Authorization": f"Bearer {KIE_API_KEY.strip()}",
-        "api-key": KIE_API_KEY.strip(),
+        "Authorization": f"Bearer {key}",
+        "api-key": key,
         "Content-Type": "application/json"
     }
-    payload = {
-        "model": "gpt-4o-mini",
-        "messages": messages_list,
-        "temperature": 0.7
-    }
-    
+
+    # Сервис KIE AI принимает запросы на этот эндпоинт
     url = "https://api.kie.ai/v1/chat/completions"
-    
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=20)
-        if r.status_code == 200:
-            data = r.json()
-            return data["choices"][0]["message"]["content"]
-        else:
-            # Резервная попытка с другой моделью
-            payload["model"] = "gpt-4o"
-            r2 = requests.post(url, headers=headers, json=payload, timeout=20)
-            if r2.status_code == 200:
-                return r2.json()["choices"][0]["message"]["content"]
-            return f"Ошибка сервиса ({r.status_code}): {r.text}"
-    except Exception as e:
-        return f"Ошибка связи: {e}"
+
+    # Пробуем доступные модели в KIE AI
+    for model_name in ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "deepseek-chat"]:
+        payload = {
+            "model": model_name,
+            "messages": messages_list,
+            "temperature": 0.7
+        }
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=20)
+            if r.status_code == 200:
+                data = r.json()
+                if "choices" in data and len(data["choices"]) > 0:
+                    return data["choices"][0]["message"]["content"]
+        except Exception:
+            continue
+
+    return "⚠️ Не удалось получить ответ. Пожалуйста, проверьте баланс или ключ KIE AI."
 
 @bot.message_handler(func=lambda message: True)
 def message_handler(message):
@@ -195,7 +194,7 @@ def message_handler(message):
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + user_context[user_id]
 
-    ai_reply = ask_ai_service(messages)
+    ai_reply = call_kie_ai(messages)
     user_context[user_id].append({"role": "assistant", "content": ai_reply})
     bot.reply_to(message, ai_reply, reply_markup=get_main_menu())
 
