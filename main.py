@@ -4,8 +4,8 @@ import requests
 import json
 
 # ================= НАСТРОЙКИ =================
-BOT_TOKEN = "ВАШ_ТОКЕН_ОТ_BOTFATHER"
-KIE_API_KEY = "ВАШ_КЛЮЧ_ОТ_KIE_AI"
+BOT_TOKEN = "8719479123:AAGUe43dzC-B7F17_yl6_HBJ2KjAgDebqIY"
+KIE_API_KEY = "30afd64c195a54760f0a706e48790c55"
 
 # Ваш Telegram username для связи
 ADMIN_USERNAME = "@astartata"
