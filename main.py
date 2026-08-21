@@ -27,7 +27,7 @@ SYSTEM_PROMPT = (
     "ДАННЫЕ О КУРСЕ:\n"
     "1. Преподаватель: Елена Смирнова, опыт более 12 лет, международные дипломы.\n"
     "2. Цены: Мини-группа (3-4 человека) — 900 руб/урок. Индивидуально — 1800 руб/урок. Оплата гибкая.\n"
-    "3. Формат: курс 3 месяца, 2 раза в неделю по 60 мин, 80% разговорной практики на интерактивной доске. Никакой скучной зубрежки.\n"
+    "3. Формат: курс 3 месяца, 2 раза в неделю по 60 мин, 80% разговорной практики на интерактивной доске.\n"
     "4. Пробный урок: абсолютно бесплатно (30 мин). Это диагностика уровня и подбор программы.\n\n"
     "ПРАВИЛО: КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать Markdown (звездочки, решетки, нижние подчеркивания). "
     "Пиши длинным, чистым текстом, разделяй на абзацы, используй эмодзи. В конце приглашай на пробный урок."
@@ -67,12 +67,14 @@ def get_slots_keyboard():
         for s in free:
             keyboard.add(types.InlineKeyboardButton(f"🗓 {s}", callback_data=f"pick:{s}"))
             
-    keyboard.add(types.InlineKeyboardButton("⬅️ Назад в меню", callback_data="to_main"))
+    # ВЕРНУЛИ КНОПКУ ОТМЕНЫ
+    keyboard.add(types.InlineKeyboardButton("❌ Отмена", callback_data="cancel_booking"))
     return keyboard
 
 def get_cancel_keyboard():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
-    keyboard.add(types.InlineKeyboardButton("❌ Отмена (вернуться к списку)", callback_data="cancel_to_slots"))
+    # ВЕРНУЛИ КНОПКУ ОТМЕНЫ ЗАПИСИ
+    keyboard.add(types.InlineKeyboardButton("❌ Отмена записи", callback_data="cancel_booking"))
     return keyboard
 
 @bot.message_handler(commands=['start'])
@@ -81,7 +83,7 @@ def start_cmd(message):
     user_state.pop(chat_id, None)
     
     text = (
-        "Здравствуйте! 🌷 (Система обновлена 3.0)\n\n"
+        "Здравствуйте! 🌷 (Система обновлена 4.0)\n\n"
         "Добро пожаловать в онлайн-пространство разговорного английского Елены Смирновой!\n\n"
         "Здесь можно узнать о методике, посмотреть свободные окошки и задать вопрос нашему AI-консультанту.\n\n"
         "Выберите раздел в меню ниже 👇"
@@ -97,14 +99,7 @@ def callback_handler(call):
     except:
         pass
 
-    if call.data == "to_main":
-        user_state.pop(chat_id, None)
-        try:
-            bot.edit_message_text("Главное меню школы 👇", chat_id, msg_id, reply_markup=get_main_menu())
-        except:
-            bot.send_message(chat_id, "Главное меню школы 👇", reply_markup=get_main_menu())
-
-    elif call.data == "about":
+    if call.data == "about":
         user_state.pop(chat_id, None)
         text = (
             "👩‍🏫 О преподавателе: Елена Смирнова\n\n"
@@ -146,19 +141,32 @@ def callback_handler(call):
         chosen_slot = call.data.split(":", 1)[1]
         if chosen_slot in booked_slots:
             bot.answer_callback_query(call.id, "Место уже занято!", show_alert=True)
-            bot.edit_message_text("📅 Это место уже занято! Выберите другое:", chat_id, msg_id, reply_markup=get_slots_keyboard())
+            try:
+                bot.edit_message_text("📅 Это место уже занято! Выберите другое:", chat_id, msg_id, reply_markup=get_slots_keyboard())
+            except:
+                pass
         else:
             user_state[chat_id] = f"booking_{chosen_slot}|{msg_id}"
-            bot.edit_message_text(f"✨ Вы выбрали время: {chosen_slot}\n\nКак зовут ученика? Напишите имя прямо в чат:", chat_id, msg_id, reply_markup=get_cancel_keyboard())
+            try:
+                bot.edit_message_text(f"✨ Вы выбрали время: {chosen_slot}\n\nКак зовут ученика? Напишите имя прямо в чат:", chat_id, msg_id, reply_markup=get_cancel_keyboard())
+            except:
+                bot.send_message(chat_id, f"✨ Вы выбрали время: {chosen_slot}\n\nКак зовут ученика? Напишите имя прямо в чат:", reply_markup=get_cancel_keyboard())
 
-    elif call.data == "cancel_to_slots":
+    elif call.data == "cancel_booking":
         user_state.pop(chat_id, None)
-        bot.edit_message_text("📅 Выберите подходящее свободное окошко:", chat_id, msg_id, reply_markup=get_slots_keyboard())
+        text = "Запись отменена. Все свободные окошки сохранены 🌷"
+        try:
+            bot.edit_message_text(text, chat_id, msg_id, reply_markup=get_main_menu())
+        except:
+            bot.send_message(chat_id, text, reply_markup=get_main_menu())
 
     elif call.data == "reset_slots":
         booked_slots.clear()
         user_state.pop(chat_id, None)
-        bot.edit_message_text("✅ Все записи сброшены! Окошки снова свободны:", chat_id, msg_id, reply_markup=get_slots_keyboard())
+        try:
+            bot.edit_message_text("✅ Все записи сброшены! Окошки снова свободны:", chat_id, msg_id, reply_markup=get_slots_keyboard())
+        except:
+            bot.send_message(chat_id, "✅ Все записи сброшены! Окошки снова свободны:", reply_markup=get_slots_keyboard())
 
 def remove_markdown(text):
     if not text: return ""
@@ -170,7 +178,6 @@ def call_ai(messages_list):
     key = KIE_API_KEY.strip()
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     
-    # Правильный эндпоинт и перебор лучших моделей
     url = "[https://api.kie.ai/v1/chat/completions](https://api.kie.ai/v1/chat/completions)"
     models = ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"]
 
@@ -199,7 +206,6 @@ def message_handler(message):
         booked_slots.add(slot)
         user_state.pop(chat_id, None)
         
-        # Скрываем меню ввода имени
         if prev_msg_id:
             try:
                 bot.edit_message_text(f"✅ Запись на {slot} оформлена.", chat_id, prev_msg_id)
@@ -210,7 +216,6 @@ def message_handler(message):
         bot.send_message(chat_id, text, reply_markup=get_main_menu())
         return
 
-    # Защита и ответ ИИ
     if message.from_user.id not in ALLOWED_USERS:
         bot.reply_to(message, "⚠️ Доступ к ИИ открыт только для тестирования.")
         return
