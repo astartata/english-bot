@@ -8,12 +8,15 @@ KIE_API_KEY = "46fe3db9b42642fc131a4311965bf8eb"
 
 ADMIN_USERNAME = "@astartata"
 
-# Белый список: проверяющий (328761045) + ваш ID (7718617445)
+# Белый список пользователей (проверяющий + ваш ID)
 ALLOWED_USERS = [328761045, 7718617445]
+
+# Прямая ссылка на фото-баннер
+BANNER_IMAGE = "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=900&auto=format&fit=crop&q=80"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Список всех доступных окошек
+# Список всех окошек
 ALL_SLOTS = [
     "Пн, 24 августа • 17:00",
     "Ср, 26 августа • 18:30",
@@ -24,11 +27,11 @@ booked_slots = set()
 user_context = {}
 
 SYSTEM_PROMPT = (
-    "Ты — личный AI-консультант школы разговорного английского языка Елены Смирновой. "
-    "Твоя задача — вежливо, понятно и кратко консультировать учеников и родителей. "
+    "Ты — личный AI-консультант преподавателя курсов разговорного английского языка Елены Смирновой. "
+    "Твоя задача — вежливо, понятно и кратко отвечать на вопросы об уроках. "
     "Стоимость обучения: мини-группа — 900 руб/урок, индивидуально — 1800 руб/урок. "
-    "Курс длится 3 месяца, занятия 2 раза в неделю. Упор на преодоление языкового барьера. "
-    "Отвечай кратко, по делу и мягко предлагай записаться на бесплатный пробный урок."
+    "Курс длится 3 месяца, занятия 2 раза в неделю. Упор на разговорную практику и преодоление языкового барьера. "
+    "Отвечай кратко, по делу и мягко предлагай записаться на бесплатный пробный урок-диагностику."
 )
 
 def get_main_menu():
@@ -68,12 +71,15 @@ def start_cmd(message):
 
     welcome_text = (
         "Здравствуйте! 🌷\n\n"
-        "Добро пожаловать в онлайн-пространство разговорного английского!\n\n"
+        "Добро пожаловать в онлайн-пространство разговорного английского Елены Смирновой!\n\n"
         "Здесь можно познакомиться с методикой, почитать отзывы, "
         "посмотреть свободные окошки и задать вопрос нашему AI-консультанту.\n\n"
         "Выберите нужный раздел 👇"
     )
-    bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_menu())
+    try:
+        bot.send_photo(message.chat.id, BANNER_IMAGE, caption=welcome_text, reply_markup=get_main_menu())
+    except Exception:
+        bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_menu())
 
 def save_name_step(message, chosen_slot):
     if message.text and message.text.startswith('/'):
@@ -144,8 +150,7 @@ def callback_handler(call):
 
     bot.answer_callback_query(call.id)
 
-# Прямой вызов шлюза KIE AI
-def call_kie_ai(messages_list):
+def ask_kie_ai_api(messages_list):
     key = KIE_API_KEY.strip()
     headers = {
         "Authorization": f"Bearer {key}",
@@ -153,26 +158,32 @@ def call_kie_ai(messages_list):
         "Content-Type": "application/json"
     }
 
-    # Сервис KIE AI принимает запросы на этот эндпоинт
-    url = "https://api.kie.ai/v1/chat/completions"
+    # Эндпоинты KIE AI с поддержкой различных версий роутинга
+    urls = [
+        "https://api.kie.ai/openai/v1/chat/completions",
+        "https://api.kie.ai/api/v1/chat/completions",
+        "https://api.kie.ai/chat/completions"
+    ]
+    
+    models = ["gpt-4o-mini", "gpt-3.5-turbo", "deepseek-chat"]
 
-    # Пробуем доступные модели в KIE AI
-    for model_name in ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "deepseek-chat"]:
-        payload = {
-            "model": model_name,
-            "messages": messages_list,
-            "temperature": 0.7
-        }
-        try:
-            r = requests.post(url, headers=headers, json=payload, timeout=20)
-            if r.status_code == 200:
-                data = r.json()
-                if "choices" in data and len(data["choices"]) > 0:
-                    return data["choices"][0]["message"]["content"]
-        except Exception:
-            continue
+    for u in urls:
+        for m in models:
+            payload = {
+                "model": m,
+                "messages": messages_list,
+                "temperature": 0.7
+            }
+            try:
+                res = requests.post(u, headers=headers, json=payload, timeout=12)
+                if res.status_code == 200:
+                    data = res.json()
+                    if "choices" in data and len(data["choices"]) > 0:
+                        return data["choices"][0]["message"]["content"]
+            except Exception:
+                continue
 
-    return "⚠️ Не удалось получить ответ. Пожалуйста, проверьте баланс или ключ KIE AI."
+    return "⚠️ Сервер ИИ временно недоступен. Напишите преподавателю напрямую: " + ADMIN_USERNAME
 
 @bot.message_handler(func=lambda message: True)
 def message_handler(message):
@@ -194,7 +205,7 @@ def message_handler(message):
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + user_context[user_id]
 
-    ai_reply = call_kie_ai(messages)
+    ai_reply = ask_kie_ai_api(messages)
     user_context[user_id].append({"role": "assistant", "content": ai_reply})
     bot.reply_to(message, ai_reply, reply_markup=get_main_menu())
 
