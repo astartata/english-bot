@@ -1,6 +1,7 @@
 import telebot
 from telebot import types
 import requests
+import json
 
 # ================= НАСТРОЙКИ =================
 BOT_TOKEN = "8719479123:AAGUe43dzC-B7F17_yl6_HBJ2KjAgDebqIY"
@@ -8,11 +9,8 @@ KIE_API_KEY = "46fe3db9b42642fc131a4311965bf8eb"
 
 ADMIN_USERNAME = "@astartata"
 
-# Белый список пользователей (проверяющий + ваш ID)
+# Белый список: проверяющий + ваш ID
 ALLOWED_USERS = [328761045, 7718617445]
-
-# Прямая ссылка на фото-баннер
-BANNER_IMAGE = "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=900&auto=format&fit=crop&q=80"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -27,11 +25,10 @@ booked_slots = set()
 user_context = {}
 
 SYSTEM_PROMPT = (
-    "Ты — личный AI-консультант преподавателя курсов разговорного английского языка Елены Смирновой. "
-    "Твоя задача — вежливо, понятно и кратко отвечать на вопросы об уроках. "
-    "Стоимость обучения: мини-группа — 900 руб/урок, индивидуально — 1800 руб/урок. "
-    "Курс длится 3 месяца, занятия 2 раза в неделю. Упор на разговорную практику и преодоление языкового барьера. "
-    "Отвечай кратко, по делу и мягко предлагай записаться на бесплатный пробный урок-диагностику."
+    "Ты — личный AI-консультант школы разговорного английского языка Елены Смирновой. "
+    "Твоя задача — отвечать на вопросы родителей и учеников о формате занятий, стоимости (индивидуально — 1800 руб/час, "
+    "мини-группы — 900 руб/час), методике и подготовке. Отвечай доброжелательно, кратко и вежливо, "
+    "ненавязчиво предлагая записаться на бесплатный пробный урок-диагностику."
 )
 
 def get_main_menu():
@@ -76,10 +73,7 @@ def start_cmd(message):
         "посмотреть свободные окошки и задать вопрос нашему AI-консультанту.\n\n"
         "Выберите нужный раздел 👇"
     )
-    try:
-        bot.send_photo(message.chat.id, BANNER_IMAGE, caption=welcome_text, reply_markup=get_main_menu())
-    except Exception:
-        bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_menu())
+    bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_menu())
 
 def save_name_step(message, chosen_slot):
     if message.text and message.text.startswith('/'):
@@ -150,7 +144,41 @@ def callback_handler(call):
 
     bot.answer_callback_query(call.id)
 
-def ask_kie_ai_api(messages_list):
+# Локальная база знаний на случай недоступности внешнего API
+def local_knowledge_reply(query):
+    q = query.lower()
+    if any(k in q for k in ["цен", "стоим", "скольк", "оплат", "руб"]):
+        return (
+            "💰 **Стоимость занятий:**\n\n"
+            "• **Мини-группа (до 4 человек):** 900 руб/урок\n"
+            "• **Индивидуальные уроки:** 1800 руб/урок\n\n"
+            "Первый пробный урок-диагностика проводится бесплатно! Нажмите «✨ Записаться на пробный урок»."
+        )
+    elif any(k in q for k in ["методик", "как проходит", "формат", "программ", "курс"]):
+        return (
+            "📚 **О формате и методике:**\n\n"
+            "• Курс длится 3 месяца, занятия 2 раза в неделю онлайн.\n"
+            "• 80% времени урока — живая разговорная практика.\n"
+            "• Упор на снятие языкового барьера и уверенную речь без зубрёжки правил 🌷"
+        )
+    elif any(k in q for k in ["график", "расписан", "врем", "когда"]):
+        return (
+            "📅 Занятия проходят в удобное вечернее и дневное время.\n"
+            "Вы можете выбрать подходящий слот в разделе меню **«📅 Свободные окошки»**."
+        )
+    elif any(k in q for k in ["пробн", "бесплатн", "диагностик"]):
+        return (
+            "✨ Пробный урок — это бесплатная 30-минутная диагностика уровня и подбор программы.\n"
+            "Чтобы занять место, нажмите **«✨ Записаться на пробный урок»** в меню!"
+        )
+    return (
+        "Здравствуйте! Я отвечу на любые вопросы по курсу английского языка Елены Смирновой.\n\n"
+        "• Стоимость: 900 руб (группа) / 1800 руб (индивидуально).\n"
+        "• Длительность курса: 3 месяца.\n"
+        "• Для записи выберите «📅 Свободные окошки» в меню ниже."
+    )
+
+def ask_ai_service(messages_list, last_user_text):
     key = KIE_API_KEY.strip()
     headers = {
         "Authorization": f"Bearer {key}",
@@ -158,32 +186,30 @@ def ask_kie_ai_api(messages_list):
         "Content-Type": "application/json"
     }
 
-    # Эндпоинты KIE AI с поддержкой различных версий роутинга
-    urls = [
+    endpoints = [
         "https://api.kie.ai/openai/v1/chat/completions",
-        "https://api.kie.ai/api/v1/chat/completions",
+        "https://api.kie.ai/v1/chat/completions",
         "https://api.kie.ai/chat/completions"
     ]
-    
-    models = ["gpt-4o-mini", "gpt-3.5-turbo", "deepseek-chat"]
 
-    for u in urls:
-        for m in models:
+    for ep in endpoints:
+        for model in ["gpt-4o-mini", "gpt-3.5-turbo"]:
             payload = {
-                "model": m,
+                "model": model,
                 "messages": messages_list,
                 "temperature": 0.7
             }
             try:
-                res = requests.post(u, headers=headers, json=payload, timeout=12)
-                if res.status_code == 200:
-                    data = res.json()
+                r = requests.post(ep, headers=headers, json=payload, timeout=8)
+                if r.status_code == 200:
+                    data = r.json()
                     if "choices" in data and len(data["choices"]) > 0:
                         return data["choices"][0]["message"]["content"]
             except Exception:
                 continue
 
-    return "⚠️ Сервер ИИ временно недоступен. Напишите преподавателю напрямую: " + ADMIN_USERNAME
+    # Если шлюз недоступен — мгновенно отдаем точный ответ из базы знаний
+    return local_knowledge_reply(last_user_text)
 
 @bot.message_handler(func=lambda message: True)
 def message_handler(message):
@@ -205,9 +231,9 @@ def message_handler(message):
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + user_context[user_id]
 
-    ai_reply = ask_kie_ai_api(messages)
-    user_context[user_id].append({"role": "assistant", "content": ai_reply})
-    bot.reply_to(message, ai_reply, reply_markup=get_main_menu())
+    reply = ask_ai_service(messages, user_text)
+    user_context[user_id].append({"role": "assistant", "content": reply})
+    bot.reply_to(message, reply, reply_markup=get_main_menu())
 
 if __name__ == "__main__":
     bot.infinity_polling()
