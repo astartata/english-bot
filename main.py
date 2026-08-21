@@ -4,17 +4,16 @@ import requests
 
 # ================= НАСТРОЙКИ =================
 BOT_TOKEN = "8719479123:AAGUe43dzC-B7F17_yl6_HBJ2KjAgDebqIY"
+KIE_API_KEY = "46fe3db9b42642fc131a4311965bf8eb"
+
 ADMIN_USERNAME = "@astartata"
 
-# Белый список пользователей
+# Белый список: проверяющий (328761045) + ваш ID (7718617445)
 ALLOWED_USERS = [328761045, 7718617445]
-
-# Прямая ссылка на фото-баннер
-BANNER_IMAGE = "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=900&auto=format&fit=crop&q=80"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Список всех окошек
+# Список свободных окошек
 ALL_SLOTS = [
     "Пн, 24 августа • 17:00",
     "Ср, 26 августа • 18:30",
@@ -22,6 +21,14 @@ ALL_SLOTS = [
 ]
 
 booked_slots = set()
+user_context = {}
+
+SYSTEM_PROMPT = (
+    "Ты — личный AI-консультант преподавателя курсов разговорного английского языка Елены Смирновой. "
+    "Твоя задача — отвечать на вопросы родителей и учеников о формате занятий, стоимости (индивидуально — 1800 руб/час, "
+    "мини-группы — 900 руб/час), методике и подготовке. Отвечай доброжелательно, кратко и вежливо, "
+    "ненавязчиво предлагая записаться на бесплатный пробный урок-диагностику."
+)
 
 def get_main_menu():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
@@ -54,6 +61,8 @@ def get_cancel_keyboard():
 
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
+    user_id = message.from_user.id
+    user_context[user_id] = []
     bot.clear_step_handler_by_chat_id(chat_id=message.chat.id)
 
     welcome_text = (
@@ -63,10 +72,7 @@ def start_cmd(message):
         "посмотреть свободные окошки и задать вопрос нашему AI-консультанту.\n\n"
         "Выберите нужный раздел 👇"
     )
-    try:
-        bot.send_photo(message.chat.id, BANNER_IMAGE, caption=welcome_text, reply_markup=get_main_menu())
-    except Exception:
-        bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_menu())
+    bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_menu())
 
 def save_name_step(message, chosen_slot):
     if message.text and message.text.startswith('/'):
@@ -90,7 +96,7 @@ def callback_handler(call):
 
     if call.data == "about":
         text = (
-            "👩‍🏫 **О преподавателе: Елена Смирнова**\n\n"
+            "👩‍🏫 **О преподавателе**\n\n"
             "Сертифицированный преподаватель английского языка с опытом более 12 лет.\n\n"
             "✅ Практика живой речи с первого занятия\n"
             "✅ Индивидуальный подход и снятие страха говорить\n"
@@ -137,47 +143,36 @@ def callback_handler(call):
 
     bot.answer_callback_query(call.id)
 
-def get_ai_answer(user_query):
-    q = user_query.strip().lower()
+# Точный вызов через эндпоинты KIE AI
+def call_real_ai(messages_list):
+    headers = {
+        "Authorization": f"Bearer {KIE_API_KEY.strip()}",
+        "Content-Type": "application/json"
+    }
 
-    if any(k in q for k in ["цен", "стоим", "скольк", "оплат", "руб", "прайс"]):
-        return (
-            "💰 **Стоимость занятий:**\n\n"
-            "• **Мини-группа (до 4 человек):** 900 руб / урок\n"
-            "• **Индивидуальное обучение:** 1800 руб / урок\n\n"
-            "Первый пробный урок-диагностика проводится бесплатно! Чтобы выбрать время, нажмите кнопку «✨ Записаться на пробный урок»."
-        )
+    # Эндпоинты моделей KIE AI согласно их официальной спецификации
+    endpoints = [
+        "https://api.kie.ai/gemini-2.5-flash/v1/chat/completions",
+        "https://api.kie.ai/gemini-2.5-pro/v1/chat/completions",
+        "https://api.kie.ai/gpt-4o/v1/chat/completions",
+        "https://api.kie.ai/v1/chat/completions"
+    ]
 
-    if any(k in q for k in ["методик", "как проходит", "формат", "программ", "курс", "занят"]):
-        return (
-            "📚 **О методике и обучении:**\n\n"
-            "• Курс длится 3 месяца, занятия 2 раза в неделю онлайн.\n"
-            "• 80% времени каждого урока посвящено разговорной практике.\n"
-            "• Методика нацелена на быстрое преодоление языкового барьера и свободное общение без зубрежки правил 🌷"
-        )
+    for url in endpoints:
+        payload = {
+            "messages": messages_list,
+            "temperature": 0.7
+        }
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                if "choices" in data and len(data["choices"]) > 0:
+                    return data["choices"][0]["message"]["content"]
+        except Exception:
+            continue
 
-    if any(k in q for k in ["график", "расписан", "врем", "когда", "день", "дни"]):
-        return (
-            "📅 **График занятий:**\n\n"
-            "Занятия проходят в удобное дневное и вечернее время 2 раза в неделю.\n"
-            "Посмотреть актуальное расписание свободных мест можно в разделе **«📅 Свободные окошки»**."
-        )
-
-    if any(k in q for k in ["пробн", "бесплатн", "диагностик", "перв"]):
-        return (
-            "✨ **Бесплатный пробный урок:**\n\n"
-            "Это 30-минутное занятие-диагностика, где преподаватель определит текущий уровень и составит персональный план обучения.\n"
-            "Для записи нажмите **«✨ Записаться на пробный урок»** в меню!"
-        )
-
-    return (
-        "Здравствуйте! Я личный помощник Елены Смирновой 🌷\n\n"
-        "Я могу ответить на любые вопросы по обучению:\n"
-        "• Стоимость (900 руб группа / 1800 руб индивидуально)\n"
-        "• Программа и методика курса (3 месяца, 2 раза в неделю)\n"
-        "• Запись на бесплатную диагностику\n\n"
-        "Выберите раздел меню или задайте конкретный вопрос!"
-    )
+    return "⚠️ Не удалось связаться с моделью ИИ. Проверьте правильность KIE_API_KEY."
 
 @bot.message_handler(func=lambda message: True)
 def message_handler(message):
@@ -189,8 +184,19 @@ def message_handler(message):
         return
 
     bot.send_chat_action(message.chat.id, 'typing')
-    response_text = get_ai_answer(user_text)
-    bot.reply_to(message, response_text, parse_mode="Markdown", reply_markup=get_main_menu())
+
+    if user_id not in user_context:
+        user_context[user_id] = []
+
+    user_context[user_id].append({"role": "user", "content": user_text})
+    if len(user_context[user_id]) > 10:
+        user_context[user_id] = user_context[user_id][-10:]
+
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + user_context[user_id]
+
+    ai_reply = call_real_ai(messages)
+    user_context[user_id].append({"role": "assistant", "content": ai_reply})
+    bot.reply_to(message, ai_reply, reply_markup=get_main_menu())
 
 if __name__ == "__main__":
     bot.infinity_polling()
