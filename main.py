@@ -61,19 +61,14 @@ def get_slots_keyboard():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     free = [s for s in ALL_SLOTS if s not in booked_slots]
     
-    if not free:
-        keyboard.add(types.InlineKeyboardButton("🔄 Сбросить все записи", callback_data="reset_slots"))
-    else:
-        for s in free:
-            keyboard.add(types.InlineKeyboardButton(f"🗓 {s}", callback_data=f"pick:{s}"))
+    for s in free:
+        keyboard.add(types.InlineKeyboardButton(f"🗓 {s}", callback_data=f"pick:{s}"))
             
-    # ВЕРНУЛИ КНОПКУ ОТМЕНЫ
-    keyboard.add(types.InlineKeyboardButton("❌ Отмена", callback_data="cancel_booking"))
+    keyboard.add(types.InlineKeyboardButton("⬅️ Назад в меню", callback_data="to_main"))
     return keyboard
 
 def get_cancel_keyboard():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
-    # ВЕРНУЛИ КНОПКУ ОТМЕНЫ ЗАПИСИ
     keyboard.add(types.InlineKeyboardButton("❌ Отмена записи", callback_data="cancel_booking"))
     return keyboard
 
@@ -83,7 +78,7 @@ def start_cmd(message):
     user_state.pop(chat_id, None)
     
     text = (
-        "Здравствуйте! 🌷 (Система обновлена 4.0)\n\n"
+        "Здравствуйте! 🌷 (Версия 5.0)\n\n"
         "Добро пожаловать в онлайн-пространство разговорного английского Елены Смирновой!\n\n"
         "Здесь можно узнать о методике, посмотреть свободные окошки и задать вопрос нашему AI-консультанту.\n\n"
         "Выберите раздел в меню ниже 👇"
@@ -99,7 +94,14 @@ def callback_handler(call):
     except:
         pass
 
-    if call.data == "about":
+    if call.data == "to_main":
+        user_state.pop(chat_id, None)
+        try:
+            bot.edit_message_text("Главное меню школы 👇", chat_id, msg_id, reply_markup=get_main_menu())
+        except:
+            bot.send_message(chat_id, "Главное меню школы 👇", reply_markup=get_main_menu())
+
+    elif call.data == "about":
         user_state.pop(chat_id, None)
         text = (
             "👩‍🏫 О преподавателе: Елена Смирнова\n\n"
@@ -132,10 +134,12 @@ def callback_handler(call):
 
     elif call.data == "slots":
         user_state.pop(chat_id, None)
+        free = [s for s in ALL_SLOTS if s not in booked_slots]
+        text = "📅 Выберите подходящее свободное окошко:" if free else f"Свободных мест на этой неделе больше нет. Напишите преподавателю: {ADMIN_USERNAME}"
         try:
-            bot.edit_message_text("📅 Выберите подходящее свободное окошко:", chat_id, msg_id, reply_markup=get_slots_keyboard())
+            bot.edit_message_text(text, chat_id, msg_id, reply_markup=get_slots_keyboard() if free else get_main_menu())
         except:
-            bot.send_message(chat_id, "📅 Выберите подходящее свободное окошко:", reply_markup=get_slots_keyboard())
+            bot.send_message(chat_id, text, reply_markup=get_slots_keyboard() if free else get_main_menu())
 
     elif call.data.startswith("pick:"):
         chosen_slot = call.data.split(":", 1)[1]
@@ -154,19 +158,12 @@ def callback_handler(call):
 
     elif call.data == "cancel_booking":
         user_state.pop(chat_id, None)
-        text = "Запись отменена. Все свободные окошки сохранены 🌷"
+        text = "Запись отменена. 📅 Вот доступные свободные окошки:"
         try:
-            bot.edit_message_text(text, chat_id, msg_id, reply_markup=get_main_menu())
+            bot.edit_message_text(text, chat_id, msg_id, reply_markup=get_slots_keyboard())
         except:
-            bot.send_message(chat_id, text, reply_markup=get_main_menu())
+            bot.send_message(chat_id, text, reply_markup=get_slots_keyboard())
 
-    elif call.data == "reset_slots":
-        booked_slots.clear()
-        user_state.pop(chat_id, None)
-        try:
-            bot.edit_message_text("✅ Все записи сброшены! Окошки снова свободны:", chat_id, msg_id, reply_markup=get_slots_keyboard())
-        except:
-            bot.send_message(chat_id, "✅ Все записи сброшены! Окошки снова свободны:", reply_markup=get_slots_keyboard())
 
 def remove_markdown(text):
     if not text: return ""
