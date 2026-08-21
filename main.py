@@ -8,19 +8,19 @@ KIE_API_KEY = "30afd64c195a54760f0a706e48790c55"
 
 ADMIN_USERNAME = "@astartata"
 
-# Белый список: проверяющий (328761045) + ваш ID (7718617445)
+# Белый список пользователей (проверяющий + ваш ID)
 ALLOWED_USERS = [328761045, 7718617445]
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Список доступных слотов
-AVAILABLE_SLOTS = [
+# Список всех окошек
+ALL_SLOTS = [
     "Пн, 24 августа • 17:00",
     "Ср, 26 августа • 18:30",
     "Сб, 29 августа • 11:00"
 ]
 
-# Занятые слоты
+# Список занятых слотов
 booked_slots = set()
 
 user_context = {}
@@ -45,7 +45,7 @@ def get_main_menu():
 
 def get_slots_keyboard():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
-    free = [s for s in AVAILABLE_SLOTS if s not in booked_slots]
+    free = [s for s in ALL_SLOTS if s not in booked_slots]
     
     if not free:
         keyboard.add(types.InlineKeyboardButton("🔄 Сбросить все записи", callback_data="reset_slots"))
@@ -82,7 +82,6 @@ def save_name_step(message, chosen_slot):
         return
 
     student_name = message.text
-    # Слот бронируется ТОЛЬКО ЗДЕСЬ, после получения имени
     booked_slots.add(chosen_slot)
 
     confirm_text = (
@@ -121,7 +120,7 @@ def callback_handler(call):
         bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_main_menu())
 
     elif call.data in ["slots", "book"]:
-        free = [s for s in AVAILABLE_SLOTS if s not in booked_slots]
+        free = [s for s in ALL_SLOTS if s not in booked_slots]
         if not free:
             bot.send_message(chat_id, f"Свободных мест нет. Напишите: {ADMIN_USERNAME}", reply_markup=get_slots_keyboard())
         else:
@@ -146,40 +145,35 @@ def callback_handler(call):
 
     bot.answer_callback_query(call.id)
 
-# Функция прямого запроса к Kie.ai
-def query_kie_ai(messages_list):
+# Прямое обращение к Kie.ai
+def ask_ai_service(messages_list):
     headers = {
         "Authorization": f"Bearer {KIE_API_KEY.strip()}",
         "api-key": KIE_API_KEY.strip(),
         "Content-Type": "application/json"
     }
-
-    # Варианты рабочих URL провайдера Kie.ai
-    endpoints = [
-        "https://api.kie.ai/v1/chat/completions",
-        "https://api.kie.ai/chat/completions",
-        "https://api.kie.ai/api/v1/chat/completions"
-    ]
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": messages_list,
+        "temperature": 0.7
+    }
     
-    models = ["gpt-4o-mini", "gpt-3.5-turbo"]
-
-    for url in endpoints:
-        for model in models:
-            payload = {
-                "model": model,
-                "messages": messages_list,
-                "temperature": 0.7
-            }
-            try:
-                res = requests.post(url, headers=headers, json=payload, timeout=12)
-                if res.status_code == 200:
-                    data = res.json()
-                    if "choices" in data and len(data["choices"]) > 0:
-                        return data["choices"][0]["message"]["content"]
-            except Exception:
-                continue
-
-    return "⚠️ Не удалось получить ответ от сервера ИИ. Проверьте правильность KIE_API_KEY."
+    url = "https://api.kie.ai/v1/chat/completions"
+    
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
+        if r.status_code == 200:
+            data = r.json()
+            return data["choices"][0]["message"]["content"]
+        else:
+            # Резервная попытка с другой моделью
+            payload["model"] = "gpt-4o"
+            r2 = requests.post(url, headers=headers, json=payload, timeout=20)
+            if r2.status_code == 200:
+                return r2.json()["choices"][0]["message"]["content"]
+            return f"Ошибка сервиса ({r.status_code}): {r.text}"
+    except Exception as e:
+        return f"Ошибка связи: {e}"
 
 @bot.message_handler(func=lambda message: True)
 def message_handler(message):
@@ -201,9 +195,9 @@ def message_handler(message):
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + user_context[user_id]
 
-    reply = query_kie_ai(messages)
-    user_context[user_id].append({"role": "assistant", "content": reply})
-    bot.reply_to(message, reply, reply_markup=get_main_menu())
+    ai_reply = ask_ai_service(messages)
+    user_context[user_id].append({"role": "assistant", "content": ai_reply})
+    bot.reply_to(message, ai_reply, reply_markup=get_main_menu())
 
 if __name__ == "__main__":
     bot.infinity_polling()
